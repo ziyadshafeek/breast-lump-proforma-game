@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detailed Breast Lump Proforma Game</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <style>
+        /* Same CSS as before */
+        body { font-family: sans-serif; display: flex; justify-content: space-around; padding: 20px; background-color: #f4f4f4; }
+        .container { background-color: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); width: 45%; }
+        h2, h3 { text-align: center; color: #333; }
+        ul { list-style: none; padding: 0; min-height: 50px; border: 1px dashed #ccc; background-color: #eee; border-radius: 5px; margin-bottom: 15px; }
+        li { background-color: #fff; border: 1px solid #ddd; padding: 8px 10px; margin-bottom: 5px; cursor: grab; border-radius: 4px; user-select: none; transition: background-color 0.3s; font-size: 0.9em;} /* Slightly smaller font for more items */
+        li:active { cursor: grabbing; }
+        li.correct { background-color: #d4edda; border-color: #c3e6cb; }
+        li.incorrect { background-color: #f8d7da; border-color: #f5c6cb; }
+        .buttons { text-align: center; margin-top: 20px; }
+        button { padding: 10px 20px; margin: 0 10px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; color: #fff; }
+        #checkBtn { background-color: #28a745; }
+        #answerBtn { background-color: #007bff; }
+        #resetBtn { background-color: #ffc107; color: #333;}
+        #score { text-align: center; margin-top: 15px; font-size: 1.2em; font-weight: bold; }
+        .instructions { margin-bottom: 15px; text-align: center; color: #555; font-size: 0.9em; }
+        .sortable-ghost { background-color: #cce5ff; border: 1px dashed #b8daff; opacity: 0.7; }
+        .sortable-chosen { }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Unordered Proforma Steps</h2>
+        <p class="instructions">Drag steps from here to the "Your Order" column.</p>
+        <ul id="sourceList"></ul>
+    </div>
+
+    <div class="container">
+        <h2>Your Proforma Order</h2>
+        <p class="instructions">Arrange the history & examination steps in sequence.</p>
+        <ul id="destinationList"></ul>
+        <div id="score">Score: 0 / Total Possible</div>
+        <div class="buttons">
+            <button id="checkBtn">Check Order</button>
+            <button id="answerBtn">Show Answer</button>
+            <button id="resetBtn">Reset Game</button>
+        </div>
+    </div>
+
+    <script>
+        const sourceListEl = document.getElementById('sourceList');
+        const destinationListEl = document.getElementById('destinationList');
+        const checkBtn = document.getElementById('checkBtn');
+        const answerBtn = document.getElementById('answerBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const scoreEl = document.getElementById('score');
+
+        // --- DEFINE THE DETAILED PROFORMA STEPS AND CORRECT ORDER ---
+        const proformaSteps = [
+            // History
+            { id: 'h1', text: 'History: Presenting Complaints (Main issues: Lump, Pain, Discharge etc.)' },
+            // HPI Detailed
+            { id: 'hpi-lump', text: 'HPI - Lump: Onset, Duration, Progression, Pain (SOCRATES if present), Change with cycle' },
+            { id: 'hpi-pain', text: 'HPI - Pain (if main): SOCRATES, Cyclical?, Constant/Severe?, Referred?, Bony?' },
+            { id: 'hpi-discharge', text: 'HPI - Nipple Discharge: Character (Bloody/Serous/Milky/Pus), Spontaneous?, Uni/Bilateral?, Single/Multi-duct?' },
+            { id: 'hpi-retraction', text: 'HPI - Nipple Retraction: Recent or Congenital?' },
+            { id: 'hpi-skin', text: 'HPI - Skin Changes: Onset/Type (Dimpling, Peau d’orange, Redness, Ulcer)' },
+            { id: 'hpi-mets', text: 'HPI - Systemic Sx (Mets?): Cough/Hemoptysis, Bone pain, Neuro Sx, Jaundice/Abd distension, Wt loss' },
+            { id: 'hpi-neg-trauma', text: 'HPI - Negative Hx: No recent trauma?' },
+            { id: 'hpi-neg-infect', text: 'HPI - Negative Hx: No recent fever/inflammation/lactation?' },
+            { id: 'hpi-neg-cycle', text: 'HPI - Negative Hx: Symptoms NOT cyclical?' },
+             { id: 'hpi-neg-tb', text: 'HPI - Negative Hx: No Hx Suggestive of TB?' },
+           // History Continued
+            { id: 'h3', text: 'History: Past Medical History (Prev. breast issues/Rx, Radiation, Comorbidities)' },
+            { id: 'h4', text: 'History: Drug History (OCP, HRT, ICDS drugs, Tamoxifen)' },
+            { id: 'h5', text: 'History: Personal/Social History (Parity, Menarche/Menopause, Feeding, Alcohol, Obesity, Smoking)' },
+            { id: 'h6', text: 'History: Family History (Breast/Ovarian Ca in 1st deg relative, BRCA, Syndromes)' },
+            // Examination Intro
+            { id: 'e0', text: 'Examination: Preparation (Consent, Privacy, Exposure, Chaperone)'},
+            // Inspection
+            { id: 'i1', text: 'Inspection (Sitting): Arms by the Side (Symmetry, Nipple level, Lump, Skin changes)' },
+            { id: 'i2', text: 'Inspection (Sitting): Arms Raised Above Head (Exaggerate signs, Nipple lift)' },
+            { id: 'i3', text: 'Inspection (Sitting): Hands on Hips, Pressing (Pectoral contraction effect)' },
+            { id: 'i4', text: 'Inspection (Sitting): Bending Forward (Symmetry of fall)' },
+            { id: 'i5', text: 'Inspection: Axilla & Supraclavicular Fossa (Nodes, Accessory tissue)'},
+            { id: 'i6', text: 'Inspection: Arm (Lymphoedema)'},
+           // Palpation
+            { id: 'p0', text: 'Palpation: Position (Supine, Pillow)'},
+            { id: 'p1', text: 'Palpation: Palpate NORMAL breast first (Establish baseline)'},
+            { id: 'p2', text: 'Palpation: Temperature & Tenderness (Affected Breast)' },
+            { id: 'p3', text: 'Palpation: Lump Characteristics (Site, Size, Shape, Surface, Edge, Consistency)' },
+            { id: 'p4', text: 'Palpation: Cystic Signs (Fluctuation, Transillumination - if applicable)' },
+            { id: 'p5', text: 'Palpation: Fixity to Skin (Pinch, Slide, Move lump -> Tethering/Fixity)' },
+            { id: 'p6', text: 'Palpation: Fixity to Breast Tissue (Mobility *within* breast)' },
+            { id: 'p7', text: 'Palpation: Fixity to Pectoralis Major/Fascia (Contract muscle -> Check mobility)' },
+            { id: 'p8', text: 'Palpation: Fixity to Serratus Anterior (Push wall -> Check mobility)' },
+            { id: 'p9', text: 'Palpation: Fixity to Chest Wall (Immobile)' },
+            { id: 'p10', text: 'Palpation: Elicit Nipple Discharge (If applicable)'},
+            // DDx Consideration
+             { id: 'ddx1', text: 'Consider Differential Diagnoses (Integrate History & Palpation Findings)' },
+           // Lymph Nodes
+            { id: 'ln0', text: 'Lymph Nodes: Position (Patient Sitting, Arm relaxed)'},
+            { id: 'ln1', text: 'Lymph Nodes: Central Axillary Group' },
+            { id: 'ln2', text: 'Lymph Nodes: Apical Axillary Group' },
+            { id: 'ln3', text: 'Lymph Nodes: Lateral (Brachial) Group' },
+            { id: 'ln4', text: 'Lymph Nodes: Anterior (Pectoral) Group' },
+            { id: 'ln5', text: 'Lymph Nodes: Posterior (Subscapular) Group' },
+            { id: 'ln6', text: 'Lymph Nodes: Supraclavicular Nodes' },
+            // Systemic
+            { id: 's1', text: 'Systemic Examination: Abdomen (Liver, Ascites, Ovaries-PV/PR)' },
+            { id: 's2', text: 'Systemic Examination: Chest (Lungs - Effusion, Consolidation)' },
+            { id: 's3', text: 'Systemic Examination: Skeletal (Bony Tenderness)' },
+            { id: 's4', text: 'Systemic Examination: Examine OPPOSITE Breast Thoroughly'}
+        ];
+
+        const correctOrder = proformaSteps.map(step => step.id);
+        let score = 0;
+        const totalPossibleScore = correctOrder.length;
+        let gameActive = true;
+
+        // Shuffle function (Fisher-Yates) - remains the same
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        // Initialize/reset function - remains the same logic, just uses the new proformaSteps
+         function initializeGame() {
+            gameActive = true;
+            score = 0;
+            sourceListEl.innerHTML = ''; // Clear source list
+            destinationListEl.innerHTML = ''; // Clear destination list
+            checkBtn.disabled = false;
+            answerBtn.disabled = false;
+
+
+            // Create a shuffled copy for the source list
+            let shuffledSteps = [...proformaSteps];
+            shuffleArray(shuffledSteps);
+
+             // Populate source list
+            shuffledSteps.forEach(step => {
+                const li = document.createElement('li');
+                li.textContent = step.text;
+                li.setAttribute('data-id', step.id);
+                sourceListEl.appendChild(li);
+            });
+
+             // Update score display
+            scoreEl.textContent = `Score: 0 / ${totalPossibleScore}`;
+            scoreEl.style.color = 'black'; // Reset score color
+
+             // Remove any previous correct/incorrect styling
+            document.querySelectorAll('#destinationList li').forEach(item => {
+                 item.classList.remove('correct', 'incorrect');
+            });
+         }
+
+        // Initialize SortableJS - remains the same
+        new Sortable(sourceListEl, { group: 'proforma', animation: 150, ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen' });
+        new Sortable(destinationListEl, { group: 'proforma', animation: 150, ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen' });
+
+        // Check order function - remains the same logic
+         function checkOrder() {
+            if (!gameActive) return;
+            const userOrderItems = Array.from(destinationListEl.children);
+            const userOrderIds = userOrderItems.map(li => li.getAttribute('data-id'));
+            score = 0;
+
+            userOrderItems.forEach((item, index) => {
+                item.classList.remove('correct', 'incorrect');
+                if (index < correctOrder.length && userOrderIds[index] === correctOrder[index]) {
+                    item.classList.add('correct');
+                    score++;
+                } else {
+                    item.classList.add('incorrect');
+                }
+            });
+
+            scoreEl.textContent = `Score: ${score} / ${totalPossibleScore}`;
+             if (score === totalPossibleScore && userOrderIds.length === totalPossibleScore) {
+                 scoreEl.textContent += ' - Excellent! Proforma Mastered!';
+                 scoreEl.style.color = 'green';
+                 checkBtn.disabled = true;
+                 gameActive = false;
+             } else {
+                 scoreEl.style.color = 'red';
+             }
+        }
+
+        // Show answer function - remains the same logic
+        function showAnswer() {
+             gameActive = false;
+             checkBtn.disabled = true;
+             answerBtn.disabled = true;
+            destinationListEl.innerHTML = '';
+
+            correctOrder.forEach(id => {
+                const step = proformaSteps.find(s => s.id === id);
+                 if (step) {
+                     const li = document.createElement('li');
+                     li.textContent = step.text;
+                     li.setAttribute('data-id', step.id);
+                     li.classList.add('correct');
+                     destinationListEl.appendChild(li);
+                 }
+            });
+             sourceListEl.innerHTML = '';
+             scoreEl.textContent = `Correct order displayed. Practice again!`;
+             scoreEl.style.color = 'blue';
+        }
+
+        // Event Listeners - remains the same
+        checkBtn.addEventListener('click', checkOrder);
+        answerBtn.addEventListener('click', showAnswer);
+        resetBtn.addEventListener('click', initializeGame);
+
+
+        // Initial game setup - remains the same
+         initializeGame();
+          scoreEl.textContent = `Score: 0 / ${totalPossibleScore}`;
+
+    </script>
+
+</body>
+</html>
