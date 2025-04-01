@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Breast Proforma Staged Game</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 10px; background-color: #f0f0f0; margin: 0;}
+        .stage { display: none; /* Hidden by default */ background-color: #fff; padding: 15px; margin: 10px auto; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); max-width: 600px; }
+        .stage.active { display: block; }
+        h2, h3 { text-align: center; color: #333; margin-top: 0; }
+        .list-container { margin-bottom: 15px; }
+        ul { list-style: none; padding: 10px; min-height: 40px; border: 1px dashed #ccc; background-color: #e9e9e9; border-radius: 5px; margin-top: 5px; }
+        li { background-color: #fff; border: 1px solid #ddd; padding: 8px 10px; margin-bottom: 5px; cursor: grab; border-radius: 4px; user-select: none; transition: background-color 0.2s; font-size: 0.95em; }
+        li:active { cursor: grabbing; }
+        li.correct { background-color: #c3e6cb !important; border-color: #8fd19e !important; }
+        li.incorrect { background-color: #f5c6cb !important; border-color: #e08d94 !important; }
+        .buttons { text-align: center; margin-top: 15px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+        button { padding: 8px 15px; font-size: 14px; cursor: pointer; border: none; border-radius: 5px; color: #fff; flex-grow: 1; min-width: 120px;}
+        .checkBtn { background-color: #28a745; }
+        .answerBtn { background-color: #007bff; }
+        .resetBtn { background-color: #ffc107; color: #333;}
+        .nextBtn { background-color: #17a2b8; }
+        .nextBtn:disabled { background-color: #999; cursor: not-allowed; }
+        .score { text-align: center; margin-top: 10px; font-size: 1.1em; font-weight: bold; }
+        .instructions { margin-bottom: 10px; text-align: center; color: #555; font-size: 0.9em; }
+        .sortable-ghost { background-color: #cce5ff; border: 1px dashed #b8daff; opacity: 0.7; }
+        #finalMessage { text-align: center; font-weight: bold; margin-top: 20px; font-size: 1.2em; color: green; }
+    </style>
+</head>
+<body>
+
+    <div id="gameContainer">
+        <!-- Stages will be dynamically generated here -->
+    </div>
+    <div id="finalMessage" style="display: none;">Congratulations! You've ordered all sections!</div>
+
+    <script>
+        const gameContainer = document.getElementById('gameContainer');
+        const finalMessageEl = document.getElementById('finalMessage');
+
+        const proformaData = {
+            historySections: [
+                { id: 'h1', text: 'Presenting Complaints' },
+                { id: 'h2', text: 'History of Presenting Illness (HPI)' },
+                { id: 'h3', text: 'Past Medical History' },
+                { id: 'h4', text: 'Drug History' },
+                { id: 'h5', text: 'Personal/Social History' },
+                { id: 'h6', text: 'Family History' }
+            ],
+            hpiDetails: [
+                { id: 'hpi-lump', text: 'HPI - Lump Details (Onset, Duration, Progression, Pain, Cycle Changes)' },
+                { id: 'hpi-pain', text: 'HPI - Pain Details (if primary: SOCRATES, Cyclical?, etc.)' },
+                { id: 'hpi-discharge', text: 'HPI - Nipple Discharge Details (Character, Duct, Spontaneity)' },
+                { id: 'hpi-retraction', text: 'HPI - Nipple Retraction (Recent/Congenital?)' },
+                { id: 'hpi-skin', text: 'HPI - Skin Changes (Onset/Type)' },
+                { id: 'hpi-mets', text: 'HPI - Systemic Sx (Rule out Mets - Lung, Bone, Neuro, Liver)' },
+                { id: 'hpi-neg', text: 'HPI - Key Negative Hx (No Trauma? No Infection? Not Cyclical? No TB Sx?)' } // Combined negatives
+            ],
+             examPrep: [
+                 { id: 'e0', text: 'Examination: Preparation (Consent, Privacy, Exposure, Chaperone)'}
+             ],
+            inspectionSteps: [
+                { id: 'i1', text: 'Inspection (Sitting): Arms by the Side' },
+                { id: 'i2', text: 'Inspection (Sitting): Arms Raised Above Head' },
+                { id: 'i3', text: 'Inspection (Sitting): Hands on Hips, Pressing' },
+                { id: 'i4', text: 'Inspection (Sitting): Bending Forward' },
+                { id: 'i5', text: 'Inspection: Axilla & Supraclavicular Fossa'},
+                { id: 'i6', text: 'Inspection: Arm (Lymphoedema)'}
+            ],
+            palpationSteps: [
+                { id: 'p0', text: 'Palpation: Position (Supine, Pillow)'},
+                { id: 'p1', text: 'Palpation: Palpate NORMAL breast first'},
+                { id: 'p2', text: 'Palpation: Temperature & Tenderness'},
+                { id: 'p3', text: 'Palpation: Lump Characteristics (Site, Size, Shape, Surface, Edge, Consistency)'},
+                { id: 'p4', text: 'Palpation: Cystic Signs (If applicable)'},
+                { id: 'p5', text: 'Palpation: Fixity to Skin'},
+                { id: 'p6', text: 'Palpation: Fixity to Breast Tissue'},
+                { id: 'p7', text: 'Palpation: Fixity to Pectoralis Major/Fascia'},
+                { id: 'p8', text: 'Palpation: Fixity to Serratus Anterior'},
+                { id: 'p9', text: 'Palpation: Fixity to Chest Wall'},
+                { id: 'p10', text: 'Palpation: Elicit Nipple Discharge (If applicable)'}
+            ],
+             ddxStep: [
+                 { id: 'ddx1', text: 'Consider Differential Diagnoses (Integrate History & Palpation Findings)' }
+             ],
+            lymphNodeSteps: [
+                { id: 'ln0', text: 'Lymph Nodes: Position (Sitting, Arm relaxed)'},
+                { id: 'ln1', text: 'Lymph Nodes: Central Axillary Group' },
+                { id: 'ln2', text: 'Lymph Nodes: Apical Axillary Group' },
+                { id: 'ln3', text: 'Lymph Nodes: Lateral (Brachial) Group' },
+                { id: 'ln4', text: 'Lymph Nodes: Anterior (Pectoral) Group' },
+                { id: 'ln5', text: 'Lymph Nodes: Posterior (Subscapular) Group' },
+                { id: 'ln6', text: 'Lymph Nodes: Supraclavicular Nodes' }
+            ],
+            systemicSteps: [
+                { id: 's1', text: 'Systemic Exam: Abdomen (Liver, Ascites, PV/PR)' },
+                { id: 's2', text: 'Systemic Exam: Chest (Lungs)' },
+                { id: 's3', text: 'Systemic Exam: Skeletal (Bony Tenderness)' },
+                { id: 's4', text: 'Systemic Exam: OPPOSITE Breast Thoroughly'}
+            ],
+             finalOrderSections: [
+                 { id: 'final_hist', text: '1. History Taking (All Sections)' },
+                 { id: 'final_prep', text: '2. Examination Preparation' },
+                 { id: 'final_insp', text: '3. Inspection (All Steps)' },
+                 { id: 'final_palp', text: '4. Palpation (All Steps)' },
+                 { id: 'final_ddx', text: '5. DDx Consideration Point' },
+                 { id: 'final_ln', text: '6. Lymph Node Examination' },
+                 { id: 'final_sys', text: '7. Systemic Examination & Opposite Breast' },
+             ]
+        };
+
+        const stageOrder = [
+             'historySections', 'hpiDetails', 'examPrep', 'inspectionSteps', 'palpationSteps', 'ddxStep', 'lymphNodeSteps', 'systemicSteps', 'finalOrderSections'
+        ];
+         const stageTitles = [
+             "Stage 1: Order History Sections", "Stage 2: Order HPI Details", "Stage 3: Order Exam Prep", "Stage 4: Order Inspection Steps", "Stage 5: Order Palpation Steps", "Stage 6: DDx Consideration", "Stage 7: Order Lymph Node Palpation", "Stage 8: Order Systemic Exam Steps", "Final Stage: Order Main Proforma Sections"
+         ];
+
+        let currentStageIndex = 0;
+        let sortableInstances = []; // To keep track of Sortable instances
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+         function createStageHTML(stageId, title, instructionsSource, instructionsDest) {
+             return `
+                 <div class="stage" id="stage-${stageId}">
+                     <h3>${title}</h3>
+                     <div class="list-container">
+                         <p class="instructions">${instructionsSource}</p>
+                         <ul id="sourceList-${stageId}"></ul>
+                     </div>
+                     <div class="list-container">
+                         <p class="instructions">${instructionsDest}</p>
+                         <ul id="destinationList-${stageId}"></ul>
+                     </div>
+                     <div class="score" id="score-${stageId}">Score: 0 / 0</div>
+                     <div class="buttons">
+                         <button class="checkBtn" data-stage="${stageId}">Check Stage</button>
+                         <button class="answerBtn" data-stage="${stageId}">Show Answer</button>
+                         <button class="resetBtn" data-stage="${stageId}">Reset Stage</button>
+                         <button class="nextBtn" data-stage="${stageId}" disabled>Next Stage</button>
+                     </div>
+                 </div>
+             `;
+         }
+
+        function loadStage(stageIndex) {
+            if (stageIndex >= stageOrder.length) {
+                finalMessageEl.style.display = 'block';
+                document.querySelectorAll('.stage').forEach(stage => stage.classList.remove('active')); // Hide last stage
+                return;
+            }
+            finalMessageEl.style.display = 'none';
+
+
+            const stageId = stageOrder[stageIndex];
+            const stageData = proformaData[stageId];
+             const stageTitle = stageTitles[stageIndex];
+             const totalItems = stageData.length;
+
+             // Create stage HTML if it doesn't exist
+             if (!document.getElementById(`stage-${stageId}`)) {
+                 gameContainer.insertAdjacentHTML('beforeend', createStageHTML(stageId, stageTitle, 'Drag from here:', 'Arrange in order below:'));
+             }
+
+
+            // Deactivate previous stage, activate current
+            document.querySelectorAll('.stage').forEach(stage => stage.classList.remove('active'));
+            const currentStageEl = document.getElementById(`stage-${stageId}`);
+            currentStageEl.classList.add('active');
+
+
+             const sourceList = currentStageEl.querySelector(`#sourceList-${stageId}`);
+             const destinationList = currentStageEl.querySelector(`#destinationList-${stageId}`);
+             const scoreDisplay = currentStageEl.querySelector(`#score-${stageId}`);
+             const checkButton = currentStageEl.querySelector(`.checkBtn`);
+             const answerButton = currentStageEl.querySelector(`.answerBtn`);
+             const nextButton = currentStageEl.querySelector(`.nextBtn`);
+             const resetButton = currentStageEl.querySelector(`.resetBtn`);
+
+            // Reset stage state
+            sourceList.innerHTML = '';
+            destinationList.innerHTML = '';
+            checkButton.disabled = false;
+            answerButton.disabled = false;
+            nextButton.disabled = true; // Disable next initially
+             scoreDisplay.textContent = `Score: 0 / ${totalItems}`;
+             scoreDisplay.style.color = 'black';
+             currentStageEl.dataset.correctOrder = JSON.stringify(stageData.map(s => s.id));
+             currentStageEl.dataset.totalItems = totalItems;
+             currentStageEl.dataset.gameActive = "true";
+
+
+            let shuffledSteps = [...stageData];
+            shuffleArray(shuffledSteps);
+
+            shuffledSteps.forEach(step => {
+                const li = document.createElement('li');
+                li.textContent = step.text;
+                li.setAttribute('data-id', step.id);
+                sourceList.appendChild(li);
+            });
+
+             // Destroy previous Sortable instances if they exist to prevent memory leaks
+             sortableInstances.forEach(instance => instance.destroy());
+             sortableInstances = [];
+
+            // Initialize SortableJS for the current stage
+             sortableInstances.push(new Sortable(sourceList, { group: `stage-${stageId}`, animation: 150, ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen' }));
+             sortableInstances.push(new Sortable(destinationList, { group: `stage-${stageId}`, animation: 150, ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen' }));
+
+
+             // Add event listeners for the current stage's buttons
+             checkButton.onclick = () => checkStageOrder(stageId);
+             answerButton.onclick = () => showStageAnswer(stageId);
+             resetButton.onclick = () => resetCurrentStage();
+             nextButton.onclick = () => loadStage(currentStageIndex + 1);
+
+        }
+
+        function checkStageOrder(stageId) {
+            const stageEl = document.getElementById(`stage-${stageId}`);
+             if (stageEl.dataset.gameActive !== "true") return;
+
+             const destinationList = stageEl.querySelector(`#destinationList-${stageId}`);
+             const scoreDisplay = stageEl.querySelector(`#score-${stageId}`);
+             const nextButton = stageEl.querySelector(`.nextBtn`);
+             const correctOrder = JSON.parse(stageEl.dataset.correctOrder);
+             const totalItems = parseInt(stageEl.dataset.totalItems);
+
+            const userOrderItems = Array.from(destinationList.children);
+            const userOrderIds = userOrderItems.map(li => li.getAttribute('data-id'));
+            let stageScore = 0;
+
+            userOrderItems.forEach((item, index) => {
+                item.classList.remove('correct', 'incorrect');
+                if (index < correctOrder.length && userOrderIds[index] === correctOrder[index]) {
+                    item.classList.add('correct');
+                    stageScore++;
+                } else {
+                    item.classList.add('incorrect');
+                }
+            });
+
+            scoreDisplay.textContent = `Score: ${stageScore} / ${totalItems}`;
+             if (stageScore === totalItems && userOrderIds.length === totalItems) {
+                 scoreDisplay.textContent += ' - Correct!';
+                 scoreDisplay.style.color = 'green';
+                 nextButton.disabled = false; // Enable next stage
+                 stageEl.querySelector('.checkBtn').disabled = true;
+                 stageEl.dataset.gameActive = "false";
+
+             } else {
+                 scoreDisplay.style.color = 'red';
+                 nextButton.disabled = true; // Keep next disabled
+             }
+        }
+
+        function showStageAnswer(stageId) {
+             const stageEl = document.getElementById(`stage-${stageId}`);
+             stageEl.dataset.gameActive = "false";
+             stageEl.querySelector('.checkBtn').disabled = true;
+             stageEl.querySelector('.answerBtn').disabled = true;
+             stageEl.querySelector('.nextBtn').disabled = false; // Allow moving on after seeing answer
+
+
+            const destinationList = stageEl.querySelector(`#destinationList-${stageId}`);
+             const scoreDisplay = stageEl.querySelector(`#score-${stageId}`);
+             const sourceList = stageEl.querySelector(`#sourceList-${stageId}`);
+             const correctOrder = JSON.parse(stageEl.dataset.correctOrder);
+             const stageData = proformaData[stageId];
+
+            destinationList.innerHTML = '';
+            correctOrder.forEach(id => {
+                const step = stageData.find(s => s.id === id);
+                 if(step) {
+                     const li = document.createElement('li');
+                     li.textContent = step.text;
+                     li.setAttribute('data-id', id);
+                     li.classList.add('correct');
+                     destinationList.appendChild(li);
+                 }
+            });
+
+            sourceList.innerHTML = ''; // Clear source
+            scoreDisplay.textContent = 'Correct order shown.';
+            scoreDisplay.style.color = 'blue';
+        }
+
+         function resetCurrentStage() {
+             loadStage(currentStageIndex); // Reload the current stage
+         }
+
+
+        // Initial load
+        loadStage(currentStageIndex);
+
+    </script>
+
+</body>
+</html>
